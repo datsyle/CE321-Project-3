@@ -10,15 +10,15 @@ import matplotlib.pyplot as plt
 
 horizontal_length = 2000 #ft
 
-inital_elevation = 2100 #ft
+initial_elevation = 2050 #ft
 
-final_elevation = 2050 #ft
+final_elevation = 2000 #ft
 
 resolution = 2000 # number of points taken along the horizontal axis
 
 # option 1 is for a parabolic curve into a linear section into another parabolic curve
 
-def SSD(design_speed, braking_friction, slope, PIJR = 2.5, gravitational_constant = 32.2):
+def SSD(design_speed, slope, PIJR = 2.5, gravitational_constant = 32.2, braking_friction = 0.34):
 
     SSD = PIJR * design_speed + (design_speed**2) / (2 * gravitational_constant * (braking_friction - slope / 100))
 
@@ -26,7 +26,7 @@ def SSD(design_speed, braking_friction, slope, PIJR = 2.5, gravitational_constan
 
 def existing_elevation(horizontal_length, resolution, initial_elevation):
 
-    x_range = np.arange(0, horizontal_length + horizontal_length / resolution, horizontal_length / resolution)
+    x_range = np.arange(0, horizontal_length, horizontal_length / resolution)
 
     y_range = np.array([])
 
@@ -40,44 +40,9 @@ def existing_elevation(horizontal_length, resolution, initial_elevation):
 
 # function for a concave down vertical curve
 
-def concave_down_vertical_curve(inital_height, first_station,  SSD, initial_slope, final_slope, second_station):
-    
+def design_length(initial_slope, final_slope, SSD, concavity):
+
     A = final_slope - initial_slope
-
-    # determine minimum horizontal length of starting vertical curve
-
-    # SSD is less than curve length
-
-    L_1 = (abs(A) * (SSD**2)) / 2158
-
-    # SSD is greater than curve length
-
-    L_2 = 2 * SSD - 2158 / abs(A)
-
-    design_length = max([L_1, L_2])
-
-    x_range = np.arange(first_station, round(first_station + design_length))
-
-    # return x & y coordinates of curve
-
-    y_range = np.array([])
-
-    for x in x_range:
-
-        y = (A / (200 * design_length)) * x**2 + (initial_slope / 100) * x + inital_height
-
-        y_range = np.append(y_range, y)
-  
-    return [x_range, y_range]
-
-# function for a concave up vertical curve
-
-def concave_up_vertical_curve(final_height, first_station,  SSD, initial_slope, final_slope, second_station):
-
-    
-    A = final_slope - initial_slope
-
-    # determine minimum horizontal length of starting vertical curve
 
     # SSD is less than curve length
 
@@ -95,7 +60,47 @@ def concave_up_vertical_curve(final_height, first_station,  SSD, initial_slope, 
 
     L_4 = 2 * SSD - (400 + 3.5 * SSD) / (abs(A))
 
-    design_length = max([L_1, L_2, L_3, L_4])
+    if concavity == "down":
+
+        design_length = max([L_1, L_2])
+
+    elif concavity == "up":
+
+        design_length = max([L_1, L_2, L_3, L_4])
+
+    if design_length > 2000:
+
+        design_length = "too large"
+
+    else:
+
+        design_length = int(design_length)
+
+    return design_length
+
+def concave_down_vertical_curve(initial_height, first_station, initial_slope, final_slope, second_station, design_length):
+
+    A = final_slope - initial_slope
+
+    x_range = np.arange(first_station, round(first_station + design_length))
+
+    # return x & y coordinates of curve
+
+    y_range = np.array([])
+
+    for x in x_range:
+
+        y = (A / (200 * design_length)) * x**2 + (initial_slope / 100) * x + initial_height
+
+        y_range = np.append(y_range, y)
+  
+    return [x_range, y_range]
+
+# function for a concave up vertical curve
+
+def concave_up_vertical_curve(final_height, first_station, initial_slope, final_slope, second_station, design_length):
+
+    A = final_slope - initial_slope
 
     # return x & y coordinates of curve
 
@@ -105,29 +110,130 @@ def concave_up_vertical_curve(final_height, first_station,  SSD, initial_slope, 
 
     for x in x_range:
 
-        y = (A / (200 * design_length)) * x**2 + (initial_slope / 100) * x + final_height
+        y = (A / (200 * design_length)) * x**2 + (final_slope / 100) * x + final_height
 
         y_range = np.append(y_range, y)
   
     return [np.arange(round(second_station - design_length), second_station), y_range]
 
-#example_concave_up = concave_up_vertical_curve(10, 0, 20, -10, 0, 200)
+def linear_downgrade(initial_height, first_station, final_height, second_station):
 
-#print(example_concave_up)
+    slope = (final_height - initial_height) / (second_station - first_station)
 
-existing_elevation = existing_elevation(horizontal_length, resolution, inital_elevation)
+    x_range = np.arange(first_station, second_station)
+
+    y_range = np.array([])
+
+    for x in x_range:
+
+        y = slope * (x) + initial_height
+
+        y_range = np.append(y_range, y)
+
+    return [x_range, y_range]
+
+def cut_and_fill_case2(first_vertical_curve, linear_section, second_vertical_curve, existing_elevation):
+
+    range_of_analysis = np.array([])
+
+    range_of_analysis = np.append(first_vertical_curve[1], [linear_section[1], second_vertical_curve[1]])
+
+    return range_of_analysis - existing_elevation
+
+def cut_and_fill_case1(total_vertical_curve, existing_elevation):
+
+    return sum(abs(total_vertical_curve - existing_elevation))
 
 #plotting
 
-x = existing_elevation[0]
+#x = existing_elevation[0]
 
-y = existing_elevation[1]
+#y = existing_elevation[1]
 
-plt.plot(x, y, linewidth=2.0)
+#plt.plot(x, y, linewidth=2.0)
+
+#plt.show()
+
+# case 1 code below: case 1 is for no linear section between the first and second station of the vertical curve
+
+elevation = existing_elevation(horizontal_length, resolution, initial_elevation)
+
+# design speed in ft / s
+
+design_speed = 65 * (5280 / 3600)
+
+# SSD of first vertical curve
+
+design_elevation_difference = np.array([])
+
+#  minimum design length of first vertical curve
+
+for mid_slope in np.arange(-10, -1):
+
+    SSD_1 = SSD(design_speed, 0)
+
+    #print(SSD_1)
+
+    design_length_1 = design_length(0, mid_slope, SSD_1, "down")
+
+    #print(design_length_1)
+
+    SSD_2 = SSD(design_speed, mid_slope)
+
+    design_length_2 = design_length(mid_slope, 0, SSD_2, "up")  
+
+    if design_length_1 == "too large" or design_length_2 == "too large":
+
+        print("at mid slope:", mid_slope, "value error, at least one design length exceeds 2000")
+
+    elif design_length_1 + design_length_2 > 2000:
+
+        print("at mid slope:", mid_slope, "value error, combined design lengths exceeds 2000")
+
+    else:
+
+        print("at mid slope:", mid_slope, "all is good, the design lengths are:", design_length_1," and ", design_length_2)
+
+        for length in np.arange(design_length_1, 2000 - design_length_2):
+
+            first_curve = concave_down_vertical_curve(2100, 0, 0, mid_slope, 2000, length)
+
+            second_curve = concave_up_vertical_curve(2000, 0, mid_slope, 0, 2000, 2000 - length)
+
+            total_curve_x = np.append(first_curve[0], second_curve[0])
+
+            total_curve_y = np.append(first_curve[1], second_curve[1])
+
+            # ensuring continuity / no jumps
+
+            if first_curve[1][-1] - second_curve[1][0] < 10:
+
+                cut_and_fill = cut_and_fill_case1(total_curve_y, elevation[1])
+
+                design_elevation_difference = np.append(design_elevation_difference, cut_and_fill)
+
+                if abs(cut_and_fill) < 20000:
+
+                    saved_x = total_curve_x
+
+                    saved_y = total_curve_y
+
+            else:
+                
+                print("jump between curve 1 and 2 detected! result invalid")
+
+print(min(design_elevation_difference))
+
+fig, (ax1, ax2) = plt.subplots(2)
+
+ax1.plot(saved_x, saved_y, linewidth=2.0)
+
+ax2.plot(elevation[0], elevation[1], linewidth=2.0)
 
 plt.show()
 
+        
 
 
 
-
+        
