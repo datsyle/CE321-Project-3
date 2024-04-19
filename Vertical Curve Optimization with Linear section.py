@@ -118,21 +118,21 @@ def concave_up_vertical_curve(final_height, first_station, initial_slope, final_
   
     return [np.arange(round(second_station - design_length), second_station), y_range]
 
-def linear_downgrade(initial_height, first_station, final_height, second_station):
+def linear_downgrade(initial_height, first_station, final_height, second_station, slope):
 
-    slope = (final_height - initial_height) / (second_station - first_station)
+    # slope = (final_height - initial_height) / (second_station - first_station)
 
-    x_range = np.arange(first_station, second_station)
+    x_range = np.arange(first_station + 1, second_station)
 
     y_range = np.array([])
 
     for x in x_range:
 
-        y = slope * (x) + initial_height
+        y = (slope/100) * (x - first_station) + initial_height
 
         y_range = np.append(y_range, y)
 
-    return [x_range, y_range]
+    return [np.arange(first_station + 1, second_station), y_range]
 
 def cut_and_fill_case2(first_vertical_curve, linear_section, second_vertical_curve, existing_elevation):
 
@@ -153,6 +153,7 @@ def cut_and_fill_case1(total_vertical_curve, existing_elevation):
     y_cut = [y for y in cuts_or_fills if y < 0]
 
     return  sum(y_fill) - abs((4/5) * sum(y_cut))
+
 
 #plotting
 
@@ -176,15 +177,20 @@ design_speed = 65 * (5280 / 3600)
 
 design_elevation_difference = np.array([])
 
+jumps = np.array([])
+
+
 #  minimum design length of first vertical curve
 
-for mid_slope in np.arange(-20, -1, 0.1):
+for mid_slope in np.arange(-10, -1):
+
+    #for start_slope in np.arange(-20, -1, 1): determine if we can reduce cut and fill by 
 
     SSD_1 = SSD(design_speed, 0)
 
-    for adj in np.arange(10.0438, 10.04385, 0.00001):
+    #print(SSD_1)
 
-        #print(SSD_1)
+    for length_1 in np.arange(500, 900):
 
         design_length_1 = design_length(0, mid_slope, SSD_1, "down")
 
@@ -202,63 +208,77 @@ for mid_slope in np.arange(-20, -1, 0.1):
 
             print("at mid slope:", mid_slope, "value error, combined design lengths exceeds 2000")
 
+        elif length_1 < design_length_1 or length_1 < design_length_2:
+
+            print("at mid slope:", mid_slope,"and", length_1, "value error, at least one curve length exceeds minimum safe design length")
+
         else:
 
             print("at mid slope:", mid_slope, "all is good, the design lengths are:", design_length_1," and ", design_length_2)
 
-        first_curve = concave_down_vertical_curve(2100, 0, 0, mid_slope, 2000, 1000 - adj)
+            first_curve = concave_down_vertical_curve(2100, 0, 0, mid_slope, 2000, length_1)
 
-        second_curve = concave_up_vertical_curve(2000, 0, mid_slope, 0, 2000, 1000 + adj)
+            second_curve = concave_up_vertical_curve(2000, 0, mid_slope, 0, 2000, length_1)
 
-        #linear_section = linear_downgrade(first_curve[1][-1], first_curve[0][-1], )
+            #print(first_curve[1][-1])
 
-        total_curve_x = np.append(first_curve[0], second_curve[0])
+            linear_portion = linear_downgrade(first_curve[1][-1], first_curve[0][-1], second_curve[1][0], second_curve[0][0], mid_slope)
 
-        total_curve_y = np.append(first_curve[1], second_curve[1])
+            total_curve_x = np.concatenate((first_curve[0], linear_portion[0]), axis = 0)
 
-        # ensuring continuity / no jumps
+            total_curve_x = np.concatenate((total_curve_x, second_curve[0]), axis = 0)
 
-        if abs(first_curve[1][-1] - second_curve[1][0]) < 0.1:
+            total_curve_y = np.concatenate((first_curve[1], linear_portion[1]), axis = 0) 
+
+            total_curve_y = np.concatenate((total_curve_y, second_curve[1]), axis = 0)
+
+            # ensuring continuity / no jumps
 
             cut_and_fill = cut_and_fill_case1(total_curve_y, elevation[1])
 
             design_elevation_difference = np.append(design_elevation_difference, cut_and_fill)
 
-            if abs(cut_and_fill) < 0.00023:
+            jump = abs(linear_portion[1][-1] - second_curve[1][0])
 
-                saved_x = total_curve_x
+            jumps = np.append(jumps, jump)
 
-                saved_y = total_curve_y
+            if jump < 52:
 
-                important_information = [design_length_1, design_length_2, adj, mid_slope, cut_and_fill]
+                if abs(cut_and_fill) < 200000:
 
+                    #saving data that fits minimum cut_and_fill
 
+                    print("the design midslope is:", mid_slope)
 
-        else:
-            
-            print("jump between curve 1 and 2 detected! result invalid")
+                    print("the amount of cutting / filling required is:", cut_and_fill)
 
-#print(np.array([saved_x, saved_y]))
+                    saved_x = total_curve_x
 
-print("the minimum design length of curve 1 is:", important_information[0])
+                    saved_y = total_curve_y
 
-print("the minimum design length of curve 2 is:", important_information[1])
+                    print(cut_and_fill)
 
-print("the design length of curve 1 is:", 1000 - important_information[2])
+                else:
 
-print("the design length of curve 2 is:", 1000 + important_information[2])
+                    print("unacceptable cut and fill amount")
 
-print("the midslope of the design is:", important_information[3])
+            else:
+                
+                print("jump detected")
 
-print(important_information[4])
+# saving data
+
+print(np.array([saved_x, saved_y]))
 
 csv = pd.DataFrame([saved_x, saved_y])
 
-file_name = "elevation_design1.csv"
+file_name = "elevation_design.csv"
 
 csv.to_csv(file_name)
 
 print(min(design_elevation_difference))
+
+print(min(jumps))
 
 fig, (ax1, ax2) = plt.subplots(2)
 
